@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>نظام توزيع مناديب رمضان - واتساب</title>
+    <title> Daily Shift </title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <style>
         :root {
@@ -49,7 +49,7 @@
 <body>
 
 <div class="container">
-    <h1>🌙 نظام مناديب رمضان + إرسال واتساب</h1>
+    <h1>   Daily Shift   </h1>
 
     <div class="controls">
         <div class="input-group">
@@ -194,9 +194,9 @@
                 const shift = shiftsConfig.find(s => s.id === id);
                 return `▪️ الفترة رقم (${shift.id}): من ${shift.time}`;
             }).join('\n');
-            message = `أهلاً ${delegate.name} 🌙\nلديك مناوبات في الفترات التالية:\n\n${shiftsText}\n\nبالتوفيق!`;
+            message = `أهلاً ${delegate.name} \nلديك مناوبات في الفترات التالية:\n\n${shiftsText}\n\nبالتوفيق!`;
         } else {
-            message = `أهلاً ${delegate.name} 🌙\nأنت حالياً في قائمة الانتظار. سنقوم بالتواصل معك قريباً لتحديد موعد مناوبتك!`;
+            message = `أهلاً ${delegate.name} \nأنت حالياً في قائمة الانتظار. سنقوم بالتواصل معك قريباً لتحديد موعد مناوبتك!`;
         }
         window.open(`https://wa.me/${delegate.phone}?text=${encodeURIComponent(message)}`, '_blank');
     }
