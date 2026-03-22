@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>نظام توزيع مناديب رمضان - واتساب</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <style>
+        :root {
+            --primary: #2c3e50;
+            --accent: #27ae60;
+            --whatsapp: #25D366;
+            --danger: #e74c3c;
+            --light: #ecf0f1;
+            --warning: #f39c12;
+            --morning: #3498db;
+            --evening: #8e44ad;
+        }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f4f7f6; margin: 0; padding: 20px; color: var(--primary); }
+        .container { max-width: 1200px; margin: auto; background: white; padding: 25px; border-radius: 15px; box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
+        h1 { text-align: center; color: var(--primary); border-bottom: 2px solid var(--accent); padding-bottom: 10px; }
+        
+        .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 30px; background: var(--light); padding: 15px; border-radius: 10px; }
+        .input-group { display: flex; flex-direction: column; gap: 8px; }
+        
+        button { padding: 10px 15px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; transition: 0.3s; display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
+        button:disabled { cursor: not-allowed; opacity: 0.7; }
+        .btn-add { background: var(--accent); color: white; }
+        .btn-random { background: #8e44ad; color: white; }
+        .btn-pdf { background: #e67e22; color: white; grid-column: span 2; }
+        .btn-whatsapp { background: var(--whatsapp); color: white; padding: 4px 8px; font-size: 11px; }
+        
+        .shifts-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 15px; }
+        .shift-card { background: #fff; border: 1px solid #ddd; border-radius: 10px; padding: 12px; }
+        .shift-header { font-weight: bold; background: var(--primary); color: white; padding: 8px; border-radius: 5px; margin-bottom: 10px; text-align: center; }
+        .header-morning { background: var(--morning); }
+        .header-evening { background: var(--evening); }
+        
+        .delegate-item { background: #f9f9f9; padding: 10px; margin: 8px 0; border-right: 4px solid var(--accent); border-radius: 4px; border-left: 1px solid #eee; }
+        .item-main { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+        .delegate-name { font-weight: bold; }
+        
+        .checkbox-group { display: flex; flex-wrap: wrap; gap: 4px; }
+        .checkbox-group label { background: #eee; padding: 2px 8px; border-radius: 4px; cursor: pointer; font-size: 11px; }
+        
+        textarea, input[type="text"] { padding: 10px; border: 1px solid #ccc; border-radius: 5px; font-family: inherit; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>🌙 نظام مناديب رمضان + إرسال واتساب</h1>
+
+    <div class="controls">
+        <div class="input-group">
+            <input type="text" id="delegateName" placeholder="اسم المندوب">
+            <input type="text" id="delegatePhone" placeholder="رقم الواتساب (مثال: 9665xxxxx)">
+            <button class="btn-add" onclick="addSingle()">➕ إضافة مندوب</button>
+        </div>
+        <div class="input-group">
+            <textarea id="bulkInput" placeholder="لصق (اسم المندوب، الرقم) كل واحد في سطر..."></textarea>
+            <button class="btn-add" onclick="addBulk()">📋 إضافة القائمة</button>
+        </div>
+        <button class="btn-random" onclick="randomizeShifts()">🎲 توزيع ذكي (شفتين / بدون توالي)</button>
+        <button id="pdfBtn" class="btn-pdf" onclick="downloadPDF()">📄 تصدير الجدول PDF</button>
+    </div>
+
+    <div class="shifts-grid" id="shiftsContainer"></div>
+</div>
+
+<script>
+    // تقسيم الفترات من 8 صباحاً إلى 1 ليلاً (مدة 2-3 ساعات لكل فترة)
+    const shiftsConfig = [
+        { id: 1, time: "08:00 ص → 11:00 ص", type: "morning" },
+        { id: 2, time: "11:00 ص → 02:00 م", type: "morning" },
+        { id: 3, time: "02:00 م → 05:00 م", type: "morning" },
+        { id: 4, time: "05:00 م → 07:30 م", type: "evening" },
+        { id: 5, time: "07:30 م → 10:00 م", type: "evening" },
+        { id: 6, time: "10:00 م → 01:00 ص", type: "evening" }
+    ];
+
+    let allDelegates = JSON.parse(localStorage.getItem('delegates_v4')) || [];
+
+    function render() {
+        const container = document.getElementById('shiftsContainer');
+        container.innerHTML = '';
+
+        shiftsConfig.forEach(shift => {
+            const delegatesInShift = allDelegates.filter(d => d.shiftIds.includes(shift.id));
+            const headerClass = shift.type === 'morning' ? 'header-morning' : 'header-evening';
+            const shiftLabel = shift.type === 'morning' ? 'صباحي' : 'مسائي';
+            
+            const card = document.createElement('div');
+            card.className = 'shift-card';
+            card.innerHTML = `
+                <div class="shift-header ${headerClass}">
+                    الفترة ${shift.id} (${shiftLabel}) - المجموع: ${delegatesInShift.length}<br>
+                    <small dir="ltr">${shift.time}</small>
+                </div>
+                <div class="delegate-list">
+                    ${delegatesInShift.map(d => `
+                        <div class="delegate-item">
+                            <div class="item-main">
+                                <span class="delegate-name">${d.name}</span>
+                                <div style="display:flex; gap:5px;">
+                                    <button class="btn-whatsapp" onclick="sendWhatsApp('${d.id}')">💬 واتساب</button>
+                                    <button style="background:none; color:red; cursor:pointer;" onclick="deleteDelegate('${d.id}')">×</button>
+                                </div>
+                            </div>
+                            <div class="checkbox-group">
+                                ${shiftsConfig.map(s => `
+                                    <label style="background: ${d.shiftIds.includes(s.id) ? '#27ae60' : '#eee'}; color: ${d.shiftIds.includes(s.id) ? 'white' : 'black'}">
+                                        <input type="checkbox" style="display:none" onchange="toggleShift('${d.id}', ${s.id})" ${d.shiftIds.includes(s.id) ? 'checked' : ''}>
+                                        ${s.id}
+                                    </label>
+                                `).join('')}
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+            container.appendChild(card);
+        });
+
+        // قائمة الانتظار
+        const unassignedDelegates = allDelegates.filter(d => d.shiftIds.length === 0);
+        const unassignedCard = document.createElement('div');
+        unassignedCard.className = 'shift-card';
+        unassignedCard.style.border = '2px dashed var(--warning)';
+        unassignedCard.innerHTML = `
+            <div class="shift-header" style="background: var(--warning);">مناديب بدون فترة (انتظار)</div>
+            <div class="delegate-list">
+                ${unassignedDelegates.map(d => `
+                    <div class="delegate-item" style="border-right-color: var(--warning);">
+                        <div class="item-main">
+                            <span class="delegate-name">${d.name}</span>
+                            <div style="display:flex; gap:5px;">
+                                <button class="btn-whatsapp" onclick="sendWhatsApp('${d.id}')">💬 واتساب</button>
+                                <button style="background:none; color:red; cursor:pointer;" onclick="deleteDelegate('${d.id}')">×</button>
+                            </div>
+                        </div>
+                        <div class="checkbox-group">
+                            ${shiftsConfig.map(s => `
+                                <label style="background: #eee; color: black">
+                                    <input type="checkbox" style="display:none" onchange="toggleShift('${d.id}', ${s.id})">
+                                    ${s.id}
+                                </label>
+                            `).join('')}
+                        </div>
+                    </div>
+                `).join('')}
+                ${unassignedDelegates.length === 0 ? '<p style="text-align:center; color:#7f8c8d; font-size:13px; margin-top:10px;">لا يوجد مناديب في قائمة الانتظار</p>' : ''}
+            </div>
+        `;
+        container.appendChild(unassignedCard);
+
+        localStorage.setItem('delegates_v4', JSON.stringify(allDelegates));
+    }
+
+    function addSingle() {
+        const name = document.getElementById('delegateName').value;
+        const phone = document.getElementById('delegatePhone').value;
+        if (!name) return;
+        allDelegates.push({ id: Date.now().toString(), name: name, phone: phone, shiftIds: [] });
+        document.getElementById('delegateName').value = '';
+        document.getElementById('delegatePhone').value = '';
+        render();
+    }
+
+    function addBulk() {
+        const raw = document.getElementById('bulkInput').value;
+        const lines = raw.split('\n').filter(l => l.trim() !== "");
+        lines.forEach(line => {
+            const parts = line.split(/[،,]/);
+            allDelegates.push({ 
+                id: Math.random().toString(36).substr(2, 9), 
+                name: parts[0].trim(), 
+                phone: parts[1] ? parts[1].trim() : "", 
+                shiftIds: [] 
+            });
+        });
+        document.getElementById('bulkInput').value = '';
+        render();
+    }
+
+    function sendWhatsApp(delegateId) {
+        const delegate = allDelegates.find(d => d.id === delegateId);
+        if (!delegate.phone) { alert("يرجى إضافة رقم جوال لهذا المندوب أولاً"); return; }
+
+        let message = "";
+        if (delegate.shiftIds && delegate.shiftIds.length > 0) {
+            const sortedShifts = [...delegate.shiftIds].sort((a, b) => a - b);
+            let shiftsText = sortedShifts.map(id => {
+                const shift = shiftsConfig.find(s => s.id === id);
+                return `▪️ الفترة رقم (${shift.id}): من ${shift.time}`;
+            }).join('\n');
+            message = `أهلاً ${delegate.name} 🌙\nلديك مناوبات في الفترات التالية:\n\n${shiftsText}\n\nبالتوفيق!`;
+        } else {
+            message = `أهلاً ${delegate.name} 🌙\nأنت حالياً في قائمة الانتظار. سنقوم بالتواصل معك قريباً لتحديد موعد مناوبتك!`;
+        }
+        window.open(`https://wa.me/${delegate.phone}?text=${encodeURIComponent(message)}`, '_blank');
+    }
+
+    function toggleShift(delegateId, shiftId) {
+        const delegate = allDelegates.find(d => d.id === delegateId);
+        if (delegate) {
+            if (delegate.shiftIds.includes(shiftId)) {
+                delegate.shiftIds = delegate.shiftIds.filter(id => id !== shiftId);
+            } else {
+                delegate.shiftIds.push(shiftId);
+            }
+            render();
+        }
+    }
+
+    function deleteDelegate(id) {
+        if(confirm("هل أنت متأكد من حذف المندوب؟")) {
+            allDelegates = allDelegates.filter(d => d.id !== id);
+            render();
+        }
+    }
+
+    // ✨ خوارزمية التوزيع الذكي (شفتين لكل مندوب، بدون تتابع، مع مراعاة العدد) ✨
+    function randomizeShifts() {
+        if (allDelegates.length === 0) return alert("أضف مناديب أولاً!");
+
+        // تصفير جميع الشفتات
+        allDelegates.forEach(d => d.shiftIds = []);
+
+        let delegates = [...allDelegates];
+
+        delegates.forEach(delegate => {
+            let assigned = 0;
+            let attempts = 0;
+            
+            while(assigned < 2 && attempts < 20) {
+                attempts++;
+                
+                // حساب احتياج كل فترة (المساء هدفنا 5، الصباح هدفنا 3)
+                let shiftNeeds = shiftsConfig.map(s => {
+                    let currentCount = allDelegates.filter(d => d.shiftIds.includes(s.id)).length;
+                    let target = (s.type === 'evening') ? 5 : 3;
+                    return { id: s.id, need: target - currentCount };
+                });
+
+                // ترتيب الفترات حسب الأولوية والاحتياج
+                shiftNeeds.sort((a,b) => (b.need - a.need) || (Math.random() - 0.5));
+
+                for (let s of shiftNeeds) {
+                    if (assigned >= 2) break;
+                    let sId = s.id;
+
+                    if (delegate.shiftIds.includes(sId)) continue;
+
+                    // منع الشفتات المتتالية
+                    if (delegate.shiftIds.length === 1) {
+                        if (Math.abs(delegate.shiftIds[0] - sId) <= 1) continue;
+                    }
+
+                    delegate.shiftIds.push(sId);
+                    assigned++;
+                    break; 
+                }
+            }
+            delegate.shiftIds.sort((a,b) => a - b); // ترتيب الشفتات للمندوب
+        });
+
+        render();
+    }
+
+    // ✨ تصدير PDF احترافي: صفحة بالعرض وكل صفحة تحتوي على شفتين فقط ✨
+    function downloadPDF() {
+        const pdfBtn = document.getElementById('pdfBtn');
+        const originalText = pdfBtn.innerHTML;
+        pdfBtn.innerHTML = '⏳ جاري التجهيز...';
+        pdfBtn.disabled = true;
+
+        let printHTML = `
+        <div style="font-family: 'Segoe UI', Tahoma, sans-serif; direction: rtl; background: #fff;">
+        `;
+
+        // دمج كل شفتين في صفحة واحدة
+        for (let i = 0; i < shiftsConfig.length; i += 2) {
+            
+            // تصميم الحاوية لتمثل صفحة كاملة بالعرض
+            printHTML += `<div style="page-break-after: always; padding: 20px; box-sizing: border-box; min-height: 200mm;">`;
+            
+            if (i === 0) {
+                printHTML += `<h1 style="text-align: center; color: #2c3e50; border-bottom: 2px solid #27ae60; padding-bottom: 10px; margin-bottom: 25px;">جدول مناوبات مناديب رمضان</h1>`;
+            } else {
+                printHTML += `<div style="height: 30px;"></div>`;
+            }
+
+            printHTML += `<div style="display: flex; justify-content: space-between; gap: 20px;">`;
+            
+            for(let j = 0; j < 2; j++) {
+                if (i + j < shiftsConfig.length) {
+                    const shift = shiftsConfig[i + j];
+                    const delegatesInShift = allDelegates.filter(d => d.shiftIds.includes(shift.id));
+                    const headerBg = shift.type === 'morning' ? '#3498db' : '#8e44ad';
+                    
+                    let delegatesHTML = delegatesInShift.map(d => `
+                        <div style="background: #f9f9f9; padding: 12px; margin: 8px 0; border-right: 4px solid ${headerBg}; border-radius: 4px; border-left: 1px solid #eee; font-weight: bold; color: #333; font-size: 16px;">
+                            ${d.name}
+                        </div>
+                    `).join('');
+
+                    if(delegatesInShift.length === 0) {
+                        delegatesHTML = `<div style="text-align:center; color:#999; padding: 20px;">لا يوجد مناديب</div>`;
+                    }
+
+                    printHTML += `
+                    <div style="flex: 1; border: 1px solid #ddd; border-radius: 10px; padding: 15px; box-sizing: border-box;">
+                        <div style="font-weight: bold; background: ${headerBg}; color: white; padding: 10px; border-radius: 5px; margin-bottom: 15px; text-align: center; font-size: 18px;">
+                            الفترة ${shift.id} - المجموع: ${delegatesInShift.length}<br>
+                            <span style="font-size: 14px;" dir="ltr">${shift.time}</span>
+                        </div>
+                        <div>
+                            ${delegatesHTML}
+                        </div>
+                    </div>
+                    `;
+                }
+            }
+            
+            printHTML += `</div></div>`;
+        }
+
+        printHTML += `</div>`;
+
+        const opt = { 
+            margin: 0, 
+            filename: 'جدول_رمضان_النهائي.pdf', 
+            image: { type: 'jpeg', quality: 1 },
+            html2canvas: { scale: 2, useCORS: true }, 
+            jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' },
+            pagebreak: { mode: 'css' }
+        };
+
+        html2pdf().set(opt).from(printHTML).save().then(() => {
+            pdfBtn.innerHTML = originalText;
+            pdfBtn.disabled = false;
+        }).catch(err => {
+            console.error("PDF Error: ", err);
+            pdfBtn.innerHTML = originalText;
+            pdfBtn.disabled = false;
+            alert("حدث خطأ أثناء تصدير الملف.");
+        });
+    }
+
+    render();
+</script>
+</body>
+</html>
